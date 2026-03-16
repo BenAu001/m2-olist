@@ -177,6 +177,29 @@ def build_radar_customer(profile: dict, customer_id: str):
     return fig
 
 
+def _build_customer_journey_from_history(df) -> go.Figure:
+    """Derive customer journey Sankey from the order-history dataframe (no extra BQ call)."""
+    if df is None or (hasattr(df, "empty") and df.empty):
+        return error_figure("No order history to build journey")
+    flow = df.copy()
+    flow["delivery_outcome"] = flow["order_status"].map(
+        lambda s: "Delivered" if s == "delivered" else
+                  "Canceled" if s == "canceled" else "In Progress"
+    )
+    flow["review_bucket"] = flow["review_score"].apply(
+        lambda r: "Satisfied (4-5★)" if pd.notna(r) and float(r) >= 4
+        else "Neutral (3★)"    if pd.notna(r) and float(r) >= 3
+        else "Unhappy (1-2★)"  if pd.notna(r)
+        else "No Review"
+    )
+    flow["category"]     = flow["category"].fillna("Other")
+    flow["payment_type"] = flow["payment_type"].fillna("unknown")
+    flow["order_count"]  = 1
+    cols = ["category", "payment_type", "delivery_outcome", "review_bucket"]
+    flow = flow.groupby(cols, dropna=False)["order_count"].sum().reset_index()
+    return _build_sankey_fig(flow, cols, "Customer Journey Flow")
+
+
 # ── Data loaders ──────────────────────────────────────────────
 
 def load_rfm_chart():
@@ -240,6 +263,23 @@ def load_revenue_trend():
         }
         fig.update_layout(**_layout)
         return fig
+    except Exception as e:
+        return error_figure(f"Error: {e}")
+
+
+def load_portfolio_journey() -> go.Figure:
+    """Sankey: segment → payment_type → delivery_outcome → review_bucket (all customers)."""
+    client, cfg, err = _get_client()
+    if err:
+        return error_figure("GCP not configured")
+    from dashboards.lik_hong.queries import get_portfolio_journey
+    try:
+        df = get_portfolio_journey(client, cfg)
+        return _build_sankey_fig(
+            df,
+            ["segment", "payment_type", "delivery_outcome", "review_bucket"],
+            "",
+        )
     except Exception as e:
         return error_figure(f"Error: {e}")
 
@@ -454,7 +494,7 @@ with gr.Blocks(analytics_enabled=False, title="Customer 360") as dashboard:
 
     page_header(
         "Customer 360 + Next Best Action",
-        subtitle="RFM segmentation · Churn risk · Personalised next actions",
+        subtitle="Individual profiles · Portfolio analytics · Personalised actions",
         icon="👤",
     )
 
