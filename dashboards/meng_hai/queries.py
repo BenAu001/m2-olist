@@ -180,3 +180,28 @@ def get_payment_by_price_band(client, cfg):
     ORDER BY price_band_order, total_revenue DESC
     """
     return run_query(client, sql)
+
+
+def get_geo_bubble_map(client, cfg):
+    """Payment volume/revenue by state with centroid coordinates for geo map."""
+    mart = qualified_table(cfg, "Mart_Payment_Analytics")
+    silver = f"`{cfg['project_id']}.olist_silver.stg_geolocation`"
+    sql = f"""
+    WITH state_coords AS (
+        SELECT state, AVG(latitude) AS lat, AVG(longitude) AS lng
+        FROM {silver}
+        GROUP BY 1
+    )
+    SELECT
+        m.customer_state,
+        m.payment_type,
+        COUNT(*)                          AS payment_count,
+        ROUND(SUM(m.payment_value), 2)    AS total_revenue,
+        sc.lat,
+        sc.lng
+    FROM {mart} m
+    JOIN state_coords sc ON m.customer_state = sc.state
+    GROUP BY 1, 2, sc.lat, sc.lng
+    ORDER BY total_revenue DESC
+    """
+    return run_query(client, sql)

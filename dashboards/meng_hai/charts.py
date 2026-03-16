@@ -242,3 +242,79 @@ def load_payment_by_price_band():
         return fig
     except Exception as e:
         return error_figure(f"Error: {e}")
+
+
+def load_geo_bubble_map():
+    client, cfg, err = _get_client()
+    if err:
+        return error_figure("GCP not configured")
+    from dashboards.meng_hai.queries import get_geo_bubble_map
+    try:
+        df = get_geo_bubble_map(client, cfg)
+        _STATE_NAMES = {
+            "AC": "Acre", "AL": "Alagoas", "AP": "Amapa", "AM": "Amazonas",
+            "BA": "Bahia", "CE": "Ceara", "DF": "Distrito Federal",
+            "ES": "Espirito Santo", "GO": "Goias", "MA": "Maranhao",
+            "MT": "Mato Grosso", "MS": "Mato Grosso do Sul",
+            "MG": "Minas Gerais", "PA": "Para", "PB": "Paraiba",
+            "PR": "Parana", "PE": "Pernambuco", "PI": "Piaui",
+            "RJ": "Rio de Janeiro", "RN": "Rio Grande do Norte",
+            "RS": "Rio Grande do Sul", "RO": "Rondonia", "RR": "Roraima",
+            "SC": "Santa Catarina", "SP": "Sao Paulo", "SE": "Sergipe",
+            "TO": "Tocantins",
+        }
+        df["state_name"] = df["customer_state"].map(
+            lambda s: f"{s} — {_STATE_NAMES.get(s, s)}"
+        )
+        fig = px.scatter_geo(
+            df, lat="lat", lon="lng",
+            size="total_revenue",
+            color="payment_type",
+            hover_name="state_name",
+            hover_data={"payment_count": True, "total_revenue": ":,.0f",
+                        "lat": False, "lng": False, "state_name": False},
+            title="Payment Volume by State & Type",
+            color_discrete_sequence=_TYPE_COLORS,
+            size_max=45,
+        )
+        fig.update_traces(marker=dict(opacity=0.75, line=dict(width=0.5, color="white")))
+        fig.update_geos(
+            scope="south america",
+            showland=True, landcolor="rgba(40,25,10,1)",
+            showocean=True, oceancolor="rgba(10,8,20,1)",
+            showcountries=True, countrycolor="rgba(255,140,0,0.5)",
+            showsubunits=True, subunitcolor="rgba(255,140,0,0.4)",
+            showcoastlines=True, coastlinecolor="rgba(255,140,0,0.4)",
+            showlakes=False,
+            bgcolor="rgba(0,0,0,0)",
+            center=dict(lat=-14, lon=-52),
+            projection_scale=2.8,
+        )
+        # Add state labels using the dominant (highest revenue) entry per state
+        state_labels = (
+            df.sort_values("total_revenue", ascending=False)
+            .drop_duplicates(subset="customer_state")
+        )
+        fig.add_trace(go.Scattergeo(
+            lat=state_labels["lat"],
+            lon=state_labels["lng"],
+            text=state_labels["customer_state"],
+            mode="text",
+            textfont=dict(size=9, color="rgba(255,220,150,0.8)",
+                          family="Space Grotesk, sans-serif"),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+        fig.update_layout(**_layout(
+            height=600,
+            legend=dict(
+                title="Payment Type",
+                orientation="h",
+                yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5,
+            ),
+            margin=dict(l=0, r=0, t=60, b=0),
+        ))
+        return fig
+    except Exception as e:
+        return error_figure(f"Error: {e}")

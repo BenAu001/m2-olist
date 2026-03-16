@@ -20,6 +20,7 @@ from dashboards.meng_hai.charts import (
     load_payment_by_geo,
     load_payment_by_product,
     load_payment_by_price_band,
+    load_geo_bubble_map,
 )
 
 # ── Dashboard UI ──────────────────────────────────────────────
@@ -71,6 +72,12 @@ with gr.Blocks(analytics_enabled=False) as dashboard:
             section_title("Payment by Price Band", accent="orange")
             price_band_chart = gr.Plot()
 
+    # Row 5: Geo Bubble Map (full-width)
+    with gr.Row():
+        with gr.Column():
+            section_title("Payment Geography — Bubble Map", accent="gold")
+            geo_bubble_chart = gr.Plot()
+
     # Wire up loaders
     dashboard.load(fn=load_kpis, outputs=kpi_html)
     dashboard.load(fn=load_revenue_by_type, outputs=revenue_type_chart)
@@ -81,6 +88,7 @@ with gr.Blocks(analytics_enabled=False) as dashboard:
     dashboard.load(fn=load_payment_by_geo, outputs=geo_chart)
     dashboard.load(fn=load_payment_by_product, outputs=product_chart)
     dashboard.load(fn=load_payment_by_price_band, outputs=price_band_chart)
+    dashboard.load(fn=load_geo_bubble_map, outputs=geo_bubble_chart)
 
 
 if __name__ == "__main__":
