@@ -74,13 +74,15 @@ def get_bq_client(config_path: str) -> bigquery.Client:
             str(key_path),
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
-        return bigquery.Client(project=project_id, credentials=credentials)
+        return bigquery.Client(project=project_id, credentials=credentials,
+                               location=cfg.get("location"))
 
     elif auth_method == "adc":
         credentials, detected_project = google.auth.default(
             scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
-        return bigquery.Client(project=project_id, credentials=credentials)
+        return bigquery.Client(project=project_id, credentials=credentials,
+                               location=cfg.get("location"))
 
     else:
         raise ValueError(
