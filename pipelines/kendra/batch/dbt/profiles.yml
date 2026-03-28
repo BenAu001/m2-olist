@@ -1,0 +1,11 @@
+olist_bronze_kendra:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: olist-kendralai
+      dataset: olist_raw
+      location: US
+      threads: 4
+      gcs_bucket: olist-bronze-kendra

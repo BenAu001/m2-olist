@@ -1,0 +1,79 @@
+requires_meltano: '>=3.0'
+
+project_id: olist-kendralai
+send_anonymous_usage_stats: false
+
+default_environment: dev
+
+environments:
+  - name: dev
+
+plugins:
+  extractors:
+    - name: tap-csv
+      namespace: tap_csv
+      pip_url: git+https://github.com/MeltanoLabs/tap-csv.git
+      executable: tap-csv
+      capabilities:
+        - state
+        - catalog
+        - discover
+      settings:
+        - name: files
+          kind: array
+      config:
+        files:
+          - entity: orders
+            path: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/data/olist_orders_dataset.csv
+            keys:
+              - order_id
+          - entity: customers
+            path: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/data/olist_customers_dataset.csv
+            keys:
+              - customer_id
+          - entity: sellers
+            path: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/data/olist_sellers_dataset.csv
+            keys:
+              - seller_id
+          - entity: geolocation
+            path: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/data/olist_geolocation_dataset.csv
+            keys:
+              - geolocation_zip_code_prefix
+
+  loaders:
+    - name: target-gcs
+      namespace: target_gcs
+      pip_url: target-gcs setuptools<70
+      executable: target-gcs
+      settings:
+        - name: bucket_name
+          kind: string
+        - name: key_prefix
+          kind: string
+      config:
+        bucket_name: olist-bronze-kendra
+        key_prefix: olist/raw/
+
+  utilities:                          # ← same level as extractors/loaders
+    - name: dbt-bigquery
+      namespace: dbt_bigquery
+      pip_url: dbt-core~=1.8.0 dbt-bigquery~=1.8.0
+      executable: dbt
+      settings:
+        #- name: project_dir
+        #  kind: string
+        - name: profiles_dir
+          kind: string
+      config:
+          #project_dir: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/pipelines/kendra/batch/dbt
+          #profiles_dir: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/pipelines/kendra/batch/dbt
+          #project_dir: ../dbt
+          profiles_dir: ../dbt
+          #profiles_dir: /home/kendra/lesson/Module2/m2-olist-main/m2-olist/pipelines/kendra/batch/dbt
+
+
+
+jobs:
+  - name: olist-el
+    tasks:
+      - tap-csv target-gcs

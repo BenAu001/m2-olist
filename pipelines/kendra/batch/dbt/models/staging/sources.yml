@@ -1,0 +1,166 @@
+version: 2
+
+# ============================================================
+# SOURCES  — Bronze raw tables loaded by Meltano → GCS → BQ
+# ============================================================
+sources:
+  - name: olist_raw
+    description: >
+      Raw CSV data loaded by Meltano (EL) into GCS Bronze, then surfaced in
+      BigQuery as native tables. Covers the full Olist e-commerce dataset.
+    database: "{{ env_var('DBT_PROJECT_ID') }}"
+    schema: olist_raw
+
+    tables:
+
+      - name: customers
+        description: One row per customer_id (unique per order shipping address).
+        columns:
+          - name: customer_id
+            description: FK to olist_orders_dataset; unique per order address.
+          - name: customer_unique_id
+            description: True unique customer — one person may have many customer_ids.
+          - name: customer_zip_code_prefix
+            description: 5-digit zip prefix; FK to olist_geolocation_dataset.
+          - name: customer_city
+          - name: customer_state
+
+      - name: sellers
+        description: Registered marketplace sellers.
+        columns:
+          - name: seller_id
+            description: Primary key.
+          - name: seller_zip_code_prefix
+            description: 5-digit zip prefix; FK to olist_geolocation_dataset.
+          - name: seller_city
+          - name: seller_state
+
+      - name: geolocation
+        description: >
+          ~1 million rows mapping zip code prefixes to lat/lng coordinates.
+          Contains many duplicate zip prefixes — deduplicated in stg_geolocation
+          using ROW_NUMBER() OVER (PARTITION BY zip_code_prefix ORDER BY lat) = 1
+          to produce ~5,000 unique rows for the Gold layer.
+        columns:
+          - name: geolocation_zip_code_prefix
+          - name: geolocation_lat
+          - name: geolocation_lng
+          - name: geolocation_city
+          - name: geolocation_state
+
+      - name: orders
+        description: One row per order with full lifecycle timestamps.
+        columns:
+          - name: order_id
+            description: Primary key.
+          - name: customer_id
+            description: FK to olist_customers_dataset.
+          - name: order_status
+            description: >
+              Lifecycle status: created, approved, invoiced, processing,
+              shipped, delivered, unavailable, canceled.
+          - name: order_purchase_timestamp
+          - name: order_approved_at
+          - name: order_delivered_carrier_date
+          - name: order_delivered_customer_date
+          - name: order_estimated_delivery_date
+
+      
+
+# ============================================================
+# STAGING MODELS  — Silver layer views built on the sources above
+# ============================================================
+models:
+
+  - name: stg_customers
+    description: >
+      Cleaned and renamed customers. One row per customer_id.
+      Passes through customer_unique_id for deduplication in dim_customers.
+    columns:
+      - name: customer_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_unique_id
+        tests:
+          - not_null
+      - name: customer_zip_code_prefix
+        tests:
+          - not_null
+      - name: customer_city
+        tests:
+          - not_null
+      - name: customer_state
+        tests:
+          - not_null
+
+  - name: stg_sellers
+    description: Cleaned and renamed sellers. One row per seller_id.
+    columns:
+      - name: seller_id
+        tests:
+          - not_null
+          - unique
+      - name: seller_zip_code_prefix
+        tests:
+          - not_null
+      - name: seller_city
+        tests:
+          - not_null
+      - name: seller_state
+        tests:
+          - not_null
+
+  - name: stg_geolocation
+    description: >
+      Deduplicated geolocation — one row per zip_code_prefix (~5,000 rows).
+      Raw Bronze source has ~1M rows with repeated prefixes.
+      Deduplication strategy: ROW_NUMBER() OVER (PARTITION BY zip_code_prefix ORDER BY lat) = 1.
+    columns:
+      - name: zip_code_prefix
+        tests:
+          - not_null
+          - unique
+      - name: lat
+        tests:
+          - not_null
+      - name: lng
+        tests:
+          - not_null
+      - name: city
+        tests:
+          - not_null
+      - name: state
+        tests:
+          - not_null
+
+  - name: stg_orders
+    description: >
+      Cleaned orders with all timestamp strings cast to TIMESTAMP.
+      One row per order_id.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        tests:
+          - not_null
+      - name: order_status
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - created
+                - approved
+                - invoiced
+                - processing
+                - shipped
+                - delivered
+                - unavailable
+                - canceled
+      - name: order_purchase_timestamp
+        tests:
+          - not_null
+
+  

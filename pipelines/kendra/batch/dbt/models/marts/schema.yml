@@ -1,0 +1,236 @@
+version: 2
+
+# ============================================================
+# MARTS (GOLD) MODELS — Star schema dimensions and fact table
+# ============================================================
+models:
+
+  # ----------------------------------------------------------
+  # DIM_CUSTOMERS
+  # ----------------------------------------------------------
+  - name: dim_customers
+    description: >
+      Gold customer dimension. One row per customer_id.
+      Enriched with lat/lng joined from stg_geolocation (deduplicated).
+    config:
+      materialized: table
+    columns:
+      - name: customer_key
+        description: Surrogate PK — MD5 hash of customer_id.
+        tests:
+          - not_null
+          
+      - name: customer_unique_id
+        description: True unique customer identifier across all orders.
+        tests:
+          - not_null
+      - name: customer_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_zip_code_prefix
+        tests:
+          - not_null
+      - name: customer_city
+        tests:
+          - not_null
+      - name: customer_state
+        tests:
+          - not_null
+      - name: customer_lat
+        description: Latitude from deduplicated geolocation; null if zip prefix unmatched.
+      - name: customer_lng
+        description: Longitude from deduplicated geolocation; null if zip prefix unmatched.
+
+  # ----------------------------------------------------------
+  # DIM_SELLERS
+  # ----------------------------------------------------------
+  - name: dim_sellers
+    description: >
+      Gold seller dimension. One row per seller_id.
+      Enriched with lat/lng from stg_geolocation.
+    config:
+      materialized: table
+    columns:
+      - name: seller_key
+        description: Surrogate PK — MD5 hash of seller_id.
+        tests:
+          - not_null
+          - unique
+      - name: seller_id
+        tests:
+          - not_null
+          - unique
+      - name: seller_zip_code_prefix
+        tests:
+          - not_null
+      - name: seller_city
+        tests:
+          - not_null
+      - name: seller_state
+        tests:
+          - not_null
+      - name: seller_lat
+        description: Latitude from deduplicated geolocation; null if zip prefix unmatched.
+      - name: seller_lng
+        description: Longitude from deduplicated geolocation; null if zip prefix unmatched.
+
+  # ----------------------------------------------------------
+  # DIM_GEOLOCATION
+  # ----------------------------------------------------------
+  - name: dim_geolocation
+    description: >
+      Gold geolocation reference. ~19,000 unique zip code prefixes.
+      Deduplicated from ~1M raw rows via stg_geolocation.
+    config:
+      materialized: table
+    columns:
+      - name: geolocation_key
+        description: Surrogate PK — MD5 hash of zip_code_prefix.
+        tests:
+          - not_null
+          - unique
+      - name: zip_code_prefix
+        tests:
+          - not_null
+          - unique
+      - name: city
+        tests:
+          - not_null
+      - name: state
+        tests:
+          - not_null
+      - name: lat
+        tests:
+          - not_null
+      - name: lng
+        tests:
+          - not_null
+
+  # ----------------------------------------------------------
+  # DIM_DATE
+  # ----------------------------------------------------------
+  - name: dim_date
+    description: >
+      Calendar spine covering the full Olist dataset range: 2016-09-01 to 2018-10-31.
+      Join pattern: cast(any_timestamp as date) = dim_date.date_key.
+    config:
+      materialized: table
+    columns:
+      - name: date_key
+        description: Calendar date — PK; join target for all fact timestamp casts.
+        tests:
+          - not_null
+          - unique
+      - name: full_date
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: quarter
+        tests:
+          - not_null
+      - name: month
+        tests:
+          - not_null
+      - name: month_name
+        tests:
+          - not_null
+      - name: week_of_year
+        tests:
+          - not_null
+      - name: day_of_week
+        description: 1 = Sunday in BigQuery's extract(dayofweek).
+        tests:
+          - not_null
+      - name: day_name
+        tests:
+          - not_null
+      - name: day_of_month
+        tests:
+          - not_null
+      - name: is_weekend
+        description: true if Saturday or Sunday.
+        tests:
+          - not_null
+
+  # ----------------------------------------------------------
+  # FACT_ORDERS
+  # ----------------------------------------------------------
+  - name: fact_orders
+    description: >
+      Gold fact table. Grain: one row per order.
+      Actual columns confirmed from BigQuery schema.
+      Supports: orders by state, revenue by state, delivery time analysis.
+    config:
+      materialized: table
+    columns:
+      # Surrogate + natural keys
+      - name: order_key
+        description: Surrogate PK — actual column name in BigQuery.
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: Natural order identifier.
+        tests:
+          - not_null
+          - unique
+
+      # Foreign keys
+      - name: customer_key
+        description: FK to dim_customers.customer_key.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_key
+      - name: order_date_key
+        description: FK to dim_date.date_key — from order_purchase_timestamp.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: delivery_date_key
+        description: FK to dim_date.date_key — from order_delivered_customer_date; null if undelivered.
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      # Degenerate dimensions
+      - name: order_status
+        tests:
+          - not_null
+      - name: customer_state
+        description: Denormalised for fast state-level aggregation.
+        tests:
+          - not_null
+      - name: customer_zip_code_prefix
+        tests:
+          - not_null
+
+      # Geo attributes from geolocation join
+      - name: geo_state
+        description: State from geolocation lookup.
+      - name: geo_city
+        description: City from geolocation lookup.
+
+      # Delivery time measures (days)
+      - name: actual_delivery_days
+        description: Days from purchase to actual delivery.
+      - name: estimated_delivery_days
+        description: Days from purchase to estimated delivery.
+      - name: delivery_delta_days
+        description: Positive = early delivery; negative = late delivery.
+
+      # Raw timestamps
+      - name: order_purchase_timestamp
+        tests:
+          - not_null
+      - name: order_approved_at
+      - name: order_delivered_carrier_date
+      - name: order_delivered_customer_date
+      - name: order_estimated_delivery_date
