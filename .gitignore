@@ -36,6 +36,7 @@ pipelines/lik_hong/dagster/.dagster/
 # OS
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
 
 # IDE
 .vscode/settings.json
@@ -48,3 +49,5 @@ flagged/
 
 # Runtime logs
 logs/
+dashboards/lanson/config/gcp_config.yaml
+dashboards/lanson/config/service_account.json

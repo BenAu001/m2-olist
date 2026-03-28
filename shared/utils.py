@@ -65,6 +65,9 @@ def get_bq_client(config_path: str) -> bigquery.Client:
                 f"Check {config_path}"
             )
         key_path = Path(key_path)
+        # Resolve relative paths relative to the config file's directory
+        if not key_path.is_absolute():
+            key_path = (Path(config_path).parent / key_path).resolve()
         if not key_path.exists():
             raise FileNotFoundError(
                 f"Service account key not found: {key_path}\n"
@@ -74,13 +77,15 @@ def get_bq_client(config_path: str) -> bigquery.Client:
             str(key_path),
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
-        return bigquery.Client(project=project_id, credentials=credentials)
+        return bigquery.Client(project=project_id, credentials=credentials,
+                               location=cfg.get("location"))
 
     elif auth_method == "adc":
         credentials, detected_project = google.auth.default(
             scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
-        return bigquery.Client(project=project_id, credentials=credentials)
+        return bigquery.Client(project=project_id, credentials=credentials,
+                               location=cfg.get("location"))
 
     else:
         raise ValueError(
